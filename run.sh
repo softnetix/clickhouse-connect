@@ -17,8 +17,8 @@ CLICKHOUSE_SINK_CONNECTOR_NAME=clickhouse-sink-connector
 CLICKHOUSE_SINK_CONNECTOR_CONFIG="{
            \"connector.class\": \"com.clickhouse.kafka.connect.ClickHouseSinkConnector\",
            \"name\": \"${CLICKHOUSE_SINK_CONNECTOR_NAME}\",
-           \"tasks.max\": 20,
-           \"topics\": \"player_bet_transaction_details\",
+           \"tasks.max\": 1,
+           \"topics\": \"DATA_WAREHOUSE__PLAYER_BET_TRANSACTION_DETAILS,DATA_WAREHOUSE__PLAYER,DATA_WAREHOUSE__PLAYER_DETAILS,DATA_WAREHOUSE__PLAYER_AFFILIATE,DATA_WAREHOUSE__PLAYER_LINKED_AFFILIATE,DATA_WAREHOUSE__PLAYER_BONUS\",
            \"ssl\": false,
            \"hostname\": \"${CLICKHOUSE_HOSTNAME}\",
            \"database\": \"${CLICKHOUSE_DATABASE}\",
@@ -32,7 +32,8 @@ CLICKHOUSE_SINK_CONNECTOR_CONFIG="{
            \"exactlyOnce\": true,
            \"schemas.enable\": false,
            \"errors.tolerance\": \"all\",
-           \"tableRefreshInterval\": 600
+           \"tableRefreshInterval\": 6,
+           \"topic2TableMap\": \"DATA_WAREHOUSE__PLAYER_BET_TRANSACTION_DETAILS=player_bet_transaction_details_distributed,DATA_WAREHOUSE__PLAYER=player_distributed,DATA_WAREHOUSE__PLAYER_DETAILS=player_details_distributed,DATA_WAREHOUSE__PLAYER_AFFILIATE=player_affiliate_distributed,DATA_WAREHOUSE__PLAYER_LINKED_AFFILIATE=player_linked_affiliate_distributed,DATA_WAREHOUSE__PLAYER_BONUS=player_bonus_distributed\"
        }"
 
 echo -e "\n--\n+> Starting to configure ClickHouse Sink Connector"
