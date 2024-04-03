@@ -32,7 +32,11 @@ CLICKHOUSE_SINK_CONNECTOR_CONFIG="{
            \"errors.tolerance\": \"all\",
            \"tableRefreshInterval\": 6,
            \"jdbcConnectionProperties\": \"?socket_timeout=300000\",
-           \"topic2TableMap\": \"DATA_WAREHOUSE__PLAYER_BET_TRANSACTION_DETAILS=player_bet_transaction_details_distributed,DATA_WAREHOUSE__PLAYER=player_distributed,DATA_WAREHOUSE__PLAYER_DETAILS=player_details_distributed,DATA_WAREHOUSE__PLAYER_AFFILIATE=player_affiliate_distributed,DATA_WAREHOUSE__PLAYER_LINKED_AFFILIATE=player_linked_affiliate_distributed,DATA_WAREHOUSE__PLAYER_BONUS=player_bonus_distributed\"
+           \"topic2TableMap\": \"${ENVIRONMENT_CODE}__DATA_WAREHOUSE__PLAYER_BET_TRANSACTION_DETAILS=player_bet_transaction_details_distributed,${ENVIRONMENT_CODE}__DATA_WAREHOUSE__PLAYER=player_distributed,${ENVIRONMENT_CODE}__DATA_WAREHOUSE__PLAYER_DETAILS=player_details_distributed,${ENVIRONMENT_CODE}__DATA_WAREHOUSE__PLAYER_AFFILIATE=player_affiliate_distributed,${ENVIRONMENT_CODE}__DATA_WAREHOUSE__PLAYER_LINKED_AFFILIATE=player_linked_affiliate_distributed,${ENVIRONMENT_CODE}__DATA_WAREHOUSE__PLAYER_BONUS=player_bonus_distributed\",
+           \"transforms\": \"AddPrefix\",
+           \"transforms.AddPrefix.type\": \"org.apache.kafka.connect.transforms.RegexRouter\",
+           \"transforms.AddPrefix.regex\": \".*\",
+           \"transforms.AddPrefix.replacement\": \"${ENVIRONMENT_CODE}__\$0\"
        }"
 
 echo -e "\n--\n+> Starting to configure ClickHouse Sink Connector"
