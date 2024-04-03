@@ -12,12 +12,10 @@ while : ; do
   sleep 5
 done
 
-CLICKHOUSE_SINK_CONNECTOR_NAME=clickhouse-sink-connector
-
 CLICKHOUSE_SINK_CONNECTOR_CONFIG="{
            \"connector.class\": \"com.clickhouse.kafka.connect.ClickHouseSinkConnector\",
            \"name\": \"${CLICKHOUSE_SINK_CONNECTOR_NAME}\",
-           \"tasks.max\": 15,
+           \"tasks.max\": 10,
            \"topics\": \"DATA_WAREHOUSE__PLAYER_BET_TRANSACTION_DETAILS,DATA_WAREHOUSE__PLAYER,DATA_WAREHOUSE__PLAYER_DETAILS,DATA_WAREHOUSE__PLAYER_AFFILIATE,DATA_WAREHOUSE__PLAYER_LINKED_AFFILIATE,DATA_WAREHOUSE__PLAYER_BONUS\",
            \"ssl\": false,
            \"hostname\": \"${CLICKHOUSE_HOSTNAME}\",
