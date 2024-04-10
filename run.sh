@@ -24,6 +24,7 @@ CLICKHOUSE_SINK_CONNECTOR_CONFIG="{
            \"password\": \"${CLICKHOUSE_PASSWORD}\",
            \"port\": \"${CLICKHOUSE_PORT}\",
            \"key.converter.schemas.enable\": false,
+           \"worker.sync.timeout.ms\": 30000,
            \"key.converter\": \"org.apache.kafka.connect.storage.StringConverter\",
            \"value.converter.schemas.enable\": false,
            \"value.converter\": \"org.apache.kafka.connect.json.JsonConverter\",
