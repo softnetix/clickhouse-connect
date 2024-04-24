@@ -38,7 +38,6 @@ CLICKHOUSE_SINK_CONNECTOR_CONFIG="{
            \"consumer.override.max.poll.records\": 5000,
            \"consumer.override.max.partition.fetch.bytes\": 52428800,
            \"consumer.override.enable.auto.commit\": false,
-           \"consumer.override.auto.commit.interval.ms\": 0,
            \"jdbcConnectionProperties\": \"?socket_timeout=30000\",
            \"topic2TableMap\": \"${ENVIRONMENT_CODE}__DATA_WAREHOUSE__PLAYER_BET_TRANSACTION_DETAILS=player_bet_transaction_details_distributed,${ENVIRONMENT_CODE}__DATA_WAREHOUSE__PLAYER=player_distributed,${ENVIRONMENT_CODE}__DATA_WAREHOUSE__PLAYER_DETAILS=player_details_distributed,${ENVIRONMENT_CODE}__DATA_WAREHOUSE__PLAYER_AFFILIATE=player_affiliate_distributed,${ENVIRONMENT_CODE}__DATA_WAREHOUSE__PLAYER_LINKED_AFFILIATE=player_linked_affiliate_distributed,${ENVIRONMENT_CODE}__DATA_WAREHOUSE__PLAYER_BONUS=player_bonus_distributed\",
            \"transforms\": \"AddPrefix\",
