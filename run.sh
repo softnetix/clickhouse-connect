@@ -12,6 +12,19 @@ while : ; do
   sleep 5
 done
 
+# check last created table - avoiding restarts
+while true; do
+  response=$(curl -s -u root:root --data "EXISTS $CLICKHOUSE_DATABASE.$LAST_CREATED_TABLE_NAME" "http://clickhouse-db:8123")
+
+  if [[ "$response" == "1" ]]; then
+    echo "Table $CLICKHOUSE_DATABASE.$LAST_CREATED_TABLE_NAME exists."
+    break
+  else
+    echo "Waiting for table $CLICKHOUSE_DATABASE.$LAST_CREATED_TABLE_NAME to be created..."
+    sleep 2
+  fi
+done
+
 topics=$(echo "$TOPIC2TABLEMAP" | awk -F ',' '{for (i=1; i<=NF; i++) print $i}' | awk -F '=' '{print $1}' | tr '\n' ',' | sed 's/,$//')
 
 map=$(echo "$TOPIC2TABLEMAP" | awk -F ',' -v env_code="$ENVIRONMENT_CODE" '{for (i=1; i<=NF; i++) print env_code "__"$i}' | tr '\n' ',' | sed 's/,$//')
