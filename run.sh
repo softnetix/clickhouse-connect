@@ -16,7 +16,7 @@ done
 
 # check last created table - avoiding restarts
 while true; do
-  response=$(curl -s -u "$CLICKHOUSE_USERNAME":"$CLICKHOUSE_PASSWORD" --data "EXISTS $CLICKHOUSE_DATABASE.$LAST_CREATED_TABLE_NAME" "$CLICKHOUSE_HOSTNAME")
+  response=$(curl -s -u "$CLICKHOUSE_USERNAME":"$CLICKHOUSE_PASSWORD" --data "EXISTS $CLICKHOUSE_DATABASE.$LAST_CREATED_TABLE_NAME" "http://$CLICKHOUSE_HOSTNAME:$CLICKHOUSE_PORT")
 
   if [[ "$response" == "1" ]]; then
     echo "Table $CLICKHOUSE_DATABASE.$LAST_CREATED_TABLE_NAME exists."
