@@ -213,6 +213,7 @@ while true; do
       RESTART_ATTEMPTS=0
       sleep 60  # Wait longer before next attempt
 
+      /etc/confluent/docker/run &
       create_or_update_connector
       sleep 20
     fi
