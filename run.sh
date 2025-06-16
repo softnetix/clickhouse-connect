@@ -214,6 +214,7 @@ while true; do
       sleep 60  # Wait longer before next attempt
 
       create_or_update_connector
+      sleep 20
     fi
   fi
 
