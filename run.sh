@@ -86,6 +86,7 @@ check_connector_health() {
   local connector_state
   local failed_tasks
 
+  # curl -s -w "%{http_code}" http://localhost:8084/connectors/${CLICKHOUSE_SINK_CONNECTOR_NAME}/status
   status_response=$(curl -s -w "%{http_code}" -o /tmp/connector_status.json http://localhost:8084/connectors/${CLICKHOUSE_SINK_CONNECTOR_NAME}/status 2>/dev/null)
   http_code="${status_response: -3}"
 
@@ -211,6 +212,8 @@ while true; do
       # Reset counter and continue monitoring (or exit based on your preference)
       RESTART_ATTEMPTS=0
       sleep 60  # Wait longer before next attempt
+
+      create_or_update_connector
     fi
   fi
 
