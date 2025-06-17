@@ -7,15 +7,17 @@ KAFKA_CONNECT_PID=$!
 # Wait for Kafka Connect listener
 echo "Waiting for Kafka Connect Worker to start listening on localhost ⏳"
 while : ; do
-  curl_status=$(curl -s -o /dev/null -w %{http_code} http://localhost:8084/connectors)
-  echo -e $(date) " Kafka Connect listener HTTP state: " $curl_status " (waiting for 200)"
-  if [ $curl_status -eq 200 ] ; then
+  curl_status=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8084/connectors)
+  echo -e "$(date)  Kafka Connect listener HTTP state: $curl_status (waiting for 200)"
+
+  if [ "$curl_status" -eq 200 ] ; then
     break
   fi
+
   sleep 5
 done
 
-# check last created table - avoiding restarts
+# Check last created table - avoiding restarts
 while true; do
   response=$(curl -s -u "$CLICKHOUSE_USERNAME":"$CLICKHOUSE_PASSWORD" --data "EXISTS $CLICKHOUSE_DATABASE.$LAST_CREATED_TABLE_NAME" "http://$CLICKHOUSE_HOSTNAME:$CLICKHOUSE_PORT")
 
@@ -44,7 +46,7 @@ CLICKHOUSE_SINK_CONNECTOR_CONFIG=$(cat <<EOF
   "username": "${CLICKHOUSE_USERNAME}",
   "password": "${CLICKHOUSE_PASSWORD}",
   "port": "${CLICKHOUSE_PORT}",
-  "worker.sync.timeout.ms": 30000,
+  "worker.sync.timeout.ms": 60000,
   "key.converter.schemas.enable": "${CONNECT_KEY_CONVERTER_SCHEMAS_ENABLE}",
   "key.converter": "${CONNECT_KEY_CONVERTER}",
   "value.converter.schemas.enable": "${CONNECT_VALUE_CONVERTER_SCHEMAS_ENABLE}",
@@ -72,7 +74,7 @@ CLICKHOUSE_SINK_CONNECTOR_CONFIG=$(cat <<EOF
   "consumer.override.reconnect.backoff.max.ms": "10000",
   "errors.retry.timeout": "300000",
   "errors.retry.delay.max.ms": "60000",
-  "jdbcConnectionProperties": "?socket_timeout=30000",
+  "jdbcConnectionProperties": "?socket_timeout=60000",
   "topic2TableMap": "$map",
   "transforms": "AddPrefix",
   "transforms.AddPrefix.type": "org.apache.kafka.connect.transforms.RegexRouter",
@@ -81,71 +83,6 @@ CLICKHOUSE_SINK_CONNECTOR_CONFIG=$(cat <<EOF
 }
 EOF
 )
-
-check_connector_health() {
-  local status_response
-  local connector_state
-  local failed_tasks
-
-  # curl -s -w "%{http_code}" http://localhost:8084/connectors/${CLICKHOUSE_SINK_CONNECTOR_NAME}/status
-  status_response=$(curl -s -w "%{http_code}" -o /tmp/connector_status.json http://localhost:8084/connectors/${CLICKHOUSE_SINK_CONNECTOR_NAME}/status 2>/dev/null)
-  http_code="${status_response: -3}"
-
-  if [[ "$http_code" != "200" ]]; then
-    echo "$(date) - Error: Cannot get connector status (HTTP: $http_code)"
-    return 1
-  fi
-
-  if [[ ! -f /tmp/connector_status.json ]]; then
-    echo "$(date) - Error: Status file not found"
-    return 1
-  fi
-
-  connector_state=$(cat /tmp/connector_status.json | grep -o '"state":"[^"]*"' | head -1 | cut -d'"' -f4)
-  failed_tasks=$(cat /tmp/connector_status.json | grep -c '"state":"FAILED"')
-
-  echo "$(date) - Connector state: $connector_state, Failed tasks: $failed_tasks"
-
-  if [[ "$connector_state" == "FAILED" ]] || [[ "$failed_tasks" -gt 0 ]]; then
-    return 1
-  fi
-
-  return 0
-}
-
-restart_connector() {
-  echo "$(date) - Attempting to restart connector ${CLICKHOUSE_SINK_CONNECTOR_NAME}..."
-
-  pause_response=$(curl -s -w "%{http_code}" -X PUT http://localhost:8084/connectors/${CLICKHOUSE_SINK_CONNECTOR_NAME}/pause 2>/dev/null)
-  pause_http_code="${pause_response: -3}"
-
-  if [[ "$pause_http_code" == "202" ]]; then
-    echo "$(date) - Connector paused successfully"
-    sleep 5
-  else
-    echo "$(date) - Warning: Failed to pause connector (HTTP: $pause_http_code)"
-  fi
-
-  restart_response=$(curl -s -w "%{http_code}" -X POST http://localhost:8084/connectors/${CLICKHOUSE_SINK_CONNECTOR_NAME}/restart 2>/dev/null)
-  restart_http_code="${restart_response: -3}"
-
-  if [[ "$restart_http_code" == "204" ]]; then
-    echo "$(date) - Connector restart initiated successfully"
-  else
-    echo "$(date) - Warning: Failed to restart connector (HTTP: $restart_http_code)"
-  fi
-
-  sleep 5
-
-  resume_response=$(curl -s -w "%{http_code}" -X PUT http://localhost:8084/connectors/${CLICKHOUSE_SINK_CONNECTOR_NAME}/resume 2>/dev/null)
-  resume_http_code="${resume_response: -3}"
-
-  if [[ "$resume_http_code" == "202" ]]; then
-    echo "$(date) - Connector resumed successfully"
-  else
-    echo "$(date) - Warning: Failed to resume connector (HTTP: $resume_http_code)"
-  fi
-}
 
 create_or_update_connector() {
   echo -e "\n--\n+> Starting to configure ClickHouse Sink Connector"
@@ -180,47 +117,5 @@ fi
 echo "$(date) - Waiting for connector to initialize..."
 sleep 10
 
-# health monitoring loop
-HEALTH_CHECK_INTERVAL=${HEALTH_CHECK_INTERVAL:-30}
-RESTART_ATTEMPTS=0
-MAX_RESTART_ATTEMPTS=${MAX_RESTART_ATTEMPTS:-5}
-
-echo "$(date) - Starting connector health monitoring (check interval: ${HEALTH_CHECK_INTERVAL}s)"
-
+# let orchestrator manage container
 wait "$KAFKA_CONNECT_PID"
-
-#while true; do
-#  if check_connector_health; then
-#    echo "$(date) - Connector is healthy"
-#    RESTART_ATTEMPTS=0
-#  else
-#    echo "$(date) - Connector health check failed"
-#
-#    if [[ $RESTART_ATTEMPTS -lt $MAX_RESTART_ATTEMPTS ]]; then
-#      RESTART_ATTEMPTS=$((RESTART_ATTEMPTS + 1))
-#      echo "$(date) - Restart attempt $RESTART_ATTEMPTS of $MAX_RESTART_ATTEMPTS"
-#
-#      restart_connector
-#
-#      # Wait longer after restart before next health check
-#      echo "$(date) - Waiting for connector to recover..."
-#      sleep 30
-#    else
-#      echo "$(date) - Error: Maximum restart attempts ($MAX_RESTART_ATTEMPTS) reached"
-#      echo "$(date) - Manual intervention may be required"
-#
-#      # Optional: Send alert or notification here
-#      # You can add webhook call, email notification, etc.
-#
-#      # Reset counter and continue monitoring (or exit based on your preference)
-#      RESTART_ATTEMPTS=0
-#      sleep 60  # Wait longer before next attempt
-#
-#      /etc/confluent/docker/run &
-#      create_or_update_connector
-#      sleep 20
-#    fi
-#  fi
-#
-#  sleep $HEALTH_CHECK_INTERVAL
-#done
