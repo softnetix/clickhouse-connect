@@ -2,6 +2,7 @@
 
 # Launch Kafka Connect
 /etc/confluent/docker/run &
+KAFKA_CONNECT_PID=$!
 
 # Wait for Kafka Connect listener
 echo "Waiting for Kafka Connect Worker to start listening on localhost ⏳"
@@ -186,38 +187,40 @@ MAX_RESTART_ATTEMPTS=${MAX_RESTART_ATTEMPTS:-5}
 
 echo "$(date) - Starting connector health monitoring (check interval: ${HEALTH_CHECK_INTERVAL}s)"
 
-while true; do
-  if check_connector_health; then
-    echo "$(date) - Connector is healthy"
-    RESTART_ATTEMPTS=0
-  else
-    echo "$(date) - Connector health check failed"
+wait "$KAFKA_CONNECT_PID"
 
-    if [[ $RESTART_ATTEMPTS -lt $MAX_RESTART_ATTEMPTS ]]; then
-      RESTART_ATTEMPTS=$((RESTART_ATTEMPTS + 1))
-      echo "$(date) - Restart attempt $RESTART_ATTEMPTS of $MAX_RESTART_ATTEMPTS"
-
-      restart_connector
-
-      # Wait longer after restart before next health check
-      echo "$(date) - Waiting for connector to recover..."
-      sleep 30
-    else
-      echo "$(date) - Error: Maximum restart attempts ($MAX_RESTART_ATTEMPTS) reached"
-      echo "$(date) - Manual intervention may be required"
-
-      # Optional: Send alert or notification here
-      # You can add webhook call, email notification, etc.
-
-      # Reset counter and continue monitoring (or exit based on your preference)
-      RESTART_ATTEMPTS=0
-      sleep 60  # Wait longer before next attempt
-
-      /etc/confluent/docker/run &
-      create_or_update_connector
-      sleep 20
-    fi
-  fi
-
-  sleep $HEALTH_CHECK_INTERVAL
-done
+#while true; do
+#  if check_connector_health; then
+#    echo "$(date) - Connector is healthy"
+#    RESTART_ATTEMPTS=0
+#  else
+#    echo "$(date) - Connector health check failed"
+#
+#    if [[ $RESTART_ATTEMPTS -lt $MAX_RESTART_ATTEMPTS ]]; then
+#      RESTART_ATTEMPTS=$((RESTART_ATTEMPTS + 1))
+#      echo "$(date) - Restart attempt $RESTART_ATTEMPTS of $MAX_RESTART_ATTEMPTS"
+#
+#      restart_connector
+#
+#      # Wait longer after restart before next health check
+#      echo "$(date) - Waiting for connector to recover..."
+#      sleep 30
+#    else
+#      echo "$(date) - Error: Maximum restart attempts ($MAX_RESTART_ATTEMPTS) reached"
+#      echo "$(date) - Manual intervention may be required"
+#
+#      # Optional: Send alert or notification here
+#      # You can add webhook call, email notification, etc.
+#
+#      # Reset counter and continue monitoring (or exit based on your preference)
+#      RESTART_ATTEMPTS=0
+#      sleep 60  # Wait longer before next attempt
+#
+#      /etc/confluent/docker/run &
+#      create_or_update_connector
+#      sleep 20
+#    fi
+#  fi
+#
+#  sleep $HEALTH_CHECK_INTERVAL
+#done
