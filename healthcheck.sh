@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 
 # custom healthcheck for tasks
-# todo: use later
 check_connector_health() {
   local status_response
   local connector_state
@@ -21,11 +20,11 @@ check_connector_health() {
   fi
 
   connector_state=$(cat /tmp/connector_status.json | grep -o '"state":"[^"]*"' | head -1 | cut -d'"' -f4)
-  failed_tasks=$(cat /tmp/connector_status.json | grep -c '"state":"FAILED"')
+  non_running_tasks=$(cat /tmp/connector_status.json | grep -o '"state":"[^"]*"' | grep -vc '"state":"RUNNING"')
 
-  echo "$(date) - Connector state: $connector_state, Failed tasks: $failed_tasks"
+  echo "$(date) - Connector state: $connector_state, Non-running tasks: $non_running_tasks"
 
-  if [[ "$connector_state" == "FAILED" ]] || [[ "$failed_tasks" -gt 0 ]]; then
+  if [[ "$connector_state" != "RUNNING" ]] || [[ "$non_running_tasks" -gt 0 ]]; then
     return 1
   fi
 
