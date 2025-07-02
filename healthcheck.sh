@@ -6,6 +6,7 @@ check_connector_health() {
   local connector_state
   local non_running_tasks
 
+  #curl -s -w "%{http_code}" http://localhost:8084/connectors/${CLICKHOUSE_SINK_CONNECTOR_NAME}/status 2>/dev/null
   status_response=$(curl -s -w "%{http_code}" -o /tmp/connector_status.json http://localhost:8084/connectors/${CLICKHOUSE_SINK_CONNECTOR_NAME}/status 2>/dev/null)
   http_code="${status_response: -3}"
 

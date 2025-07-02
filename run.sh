@@ -157,9 +157,12 @@ echo "$(date) - Starting connector health monitoring (check interval: ${HEALTH_C
 wait "$KAFKA_CONNECT_PID" &
 
 while true; do
-  if check_connector_health; then
+  if ! ps -p $KAFKA_CONNECT_PID > /dev/null; then
+    echo "$(date) - [HEALTHCHECK] - Kafka Connect process is not running, skipping health check"
+    exit 1
+  elif check_connector_health; then
     echo "$(date) - [HEALTHCHECK] - Connector is healthy"
-  else
+  else 
     echo "$(date) - [HEALTHCHECK] - Connector health check failed, killing Kafka Connect process..."
     kill $KAFKA_CONNECT_PID
     exit 1
