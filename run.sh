@@ -116,7 +116,7 @@ fi
 
 # wait for connector to initialize
 echo "$(date) - Waiting for connector to initialize..."
-sleep 90
+sleep 60
 
 check_connector_health() {
   local status_response
@@ -149,7 +149,7 @@ check_connector_health() {
 }
 
 # health monitoring loop
-HEALTH_CHECK_INTERVAL=${HEALTH_CHECK_INTERVAL:-30}
+HEALTH_CHECK_INTERVAL=${HEALTH_CHECK_INTERVAL:-20}
 
 echo "$(date) - Starting connector health monitoring (check interval: ${HEALTH_CHECK_INTERVAL}s)"
 
