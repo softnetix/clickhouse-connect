@@ -72,6 +72,7 @@ CLICKHOUSE_SINK_CONNECTOR_CONFIG=$(cat <<EOF
   "consumer.override.retry.backoff.ms": "1000",
   "consumer.override.reconnect.backoff.ms": "1000",
   "consumer.override.reconnect.backoff.max.ms": "10000",
+  "consumer.override.partition.assignment.strategy": "org.apache.kafka.clients.consumer.CooperativeStickyAssignor",
   "errors.retry.timeout": "300000",
   "errors.retry.delay.max.ms": "60000",
   "jdbcConnectionProperties": "?socket_timeout=60000",
