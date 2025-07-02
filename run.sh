@@ -116,7 +116,54 @@ fi
 
 # wait for connector to initialize
 echo "$(date) - Waiting for connector to initialize..."
-sleep 10
+sleep 90
+
+check_connector_health() {
+  local status_response
+  local connector_state
+  local non_running_tasks
+
+  status_response=$(curl -s -w "%{http_code}" -o /tmp/connector_status.json http://localhost:8084/connectors/${CLICKHOUSE_SINK_CONNECTOR_NAME}/status 2>/dev/null)
+  http_code="${status_response: -3}"
+
+  if [[ "$http_code" != "200" ]]; then
+    echo "$(date) - Error: Cannot get connector status (HTTP: $http_code)"
+    return 1
+  fi
+
+  if [[ ! -f /tmp/connector_status.json ]]; then
+    echo "$(date) - Error: Status file not found"
+    return 1
+  fi
+
+  connector_state=$(cat /tmp/connector_status.json | grep -o '"state":"[^"]*"' | head -1 | cut -d'"' -f4)
+  non_running_tasks=$(cat /tmp/connector_status.json | grep -o '"state":"[^"]*"' | grep -vc '"state":"RUNNING"')
+
+  echo "$(date) - Connector state: $connector_state, Non-running tasks: $non_running_tasks"
+
+  if [[ "$connector_state" != "RUNNING" ]] || [[ "$non_running_tasks" -gt 0 ]]; then
+    return 1
+  fi
+
+  return 0
+}
+
+# health monitoring loop
+HEALTH_CHECK_INTERVAL=${HEALTH_CHECK_INTERVAL:-30}
+
+echo "$(date) - Starting connector health monitoring (check interval: ${HEALTH_CHECK_INTERVAL}s)"
 
 # let orchestrator manage container
-wait "$KAFKA_CONNECT_PID"
+wait "$KAFKA_CONNECT_PID" &
+
+while true; do
+  if check_connector_health; then
+    echo "$(date) - [HEALTHCHECK] - Connector is healthy"
+  else
+    echo "$(date) - [HEALTHCHECK] - Connector health check failed, killing Kafka Connect process..."
+    kill $KAFKA_CONNECT_PID
+    exit 1
+  fi
+
+  sleep "$HEALTH_CHECK_INTERVAL"
+done

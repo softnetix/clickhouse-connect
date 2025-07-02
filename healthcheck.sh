@@ -4,7 +4,7 @@
 check_connector_health() {
   local status_response
   local connector_state
-  local failed_tasks
+  local non_running_tasks
 
   status_response=$(curl -s -w "%{http_code}" -o /tmp/connector_status.json http://localhost:8084/connectors/${CLICKHOUSE_SINK_CONNECTOR_NAME}/status 2>/dev/null)
   http_code="${status_response: -3}"
@@ -34,15 +34,15 @@ check_connector_health() {
 restart_connector() {
   echo "$(date) - Attempting to restart connector ${CLICKHOUSE_SINK_CONNECTOR_NAME}..."
 
-  pause_response=$(curl -s -w "%{http_code}" -X PUT http://localhost:8084/connectors/${CLICKHOUSE_SINK_CONNECTOR_NAME}/pause 2>/dev/null)
-  pause_http_code="${pause_response: -3}"
-
-  if [[ "$pause_http_code" == "202" ]]; then
-    echo "$(date) - Connector paused successfully"
-    sleep 5
-  else
-    echo "$(date) - Warning: Failed to pause connector (HTTP: $pause_http_code)"
-  fi
+#  pause_response=$(curl -s -w "%{http_code}" -X PUT http://localhost:8084/connectors/${CLICKHOUSE_SINK_CONNECTOR_NAME}/pause 2>/dev/null)
+#  pause_http_code="${pause_response: -3}"
+#
+#  if [[ "$pause_http_code" == "202" ]]; then
+#    echo "$(date) - Connector paused successfully"
+#    sleep 5
+#  else
+#    echo "$(date) - Warning: Failed to pause connector (HTTP: $pause_http_code)"
+#  fi
 
   restart_response=$(curl -s -w "%{http_code}" -X POST http://localhost:8084/connectors/${CLICKHOUSE_SINK_CONNECTOR_NAME}/restart 2>/dev/null)
   restart_http_code="${restart_response: -3}"
@@ -55,14 +55,14 @@ restart_connector() {
 
   sleep 5
 
-  resume_response=$(curl -s -w "%{http_code}" -X PUT http://localhost:8084/connectors/${CLICKHOUSE_SINK_CONNECTOR_NAME}/resume 2>/dev/null)
-  resume_http_code="${resume_response: -3}"
-
-  if [[ "$resume_http_code" == "202" ]]; then
-    echo "$(date) - Connector resumed successfully"
-  else
-    echo "$(date) - Warning: Failed to resume connector (HTTP: $resume_http_code)"
-  fi
+#  resume_response=$(curl -s -w "%{http_code}" -X PUT http://localhost:8084/connectors/${CLICKHOUSE_SINK_CONNECTOR_NAME}/resume 2>/dev/null)
+#  resume_http_code="${resume_response: -3}"
+#
+#  if [[ "$resume_http_code" == "202" ]]; then
+#    echo "$(date) - Connector resumed successfully"
+#  else
+#    echo "$(date) - Warning: Failed to resume connector (HTTP: $resume_http_code)"
+#  fi
 }
 
 # health monitoring loop
