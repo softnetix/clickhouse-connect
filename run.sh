@@ -72,6 +72,7 @@ CLICKHOUSE_SINK_CONNECTOR_CONFIG=$(cat <<EOF
   "consumer.override.retry.backoff.ms": "1000",
   "consumer.override.reconnect.backoff.ms": "1000",
   "consumer.override.reconnect.backoff.max.ms": "10000",
+  "consumer.override.partition.assignment.strategy": "org.apache.kafka.clients.consumer.CooperativeStickyAssignor",
   "errors.retry.timeout": "300000",
   "errors.retry.delay.max.ms": "60000",
   "jdbcConnectionProperties": "?socket_timeout=60000",
@@ -115,7 +116,57 @@ fi
 
 # wait for connector to initialize
 echo "$(date) - Waiting for connector to initialize..."
-sleep 10
+sleep 60
 
-# let orchestrator manage container
-wait "$KAFKA_CONNECT_PID"
+check_connector_health() {
+  local status_response
+  local connector_state
+  local non_running_tasks
+
+  status_response=$(curl -s -w "%{http_code}" -o /tmp/connector_status.json http://localhost:8084/connectors/${CLICKHOUSE_SINK_CONNECTOR_NAME}/status 2>/dev/null)
+  http_code="${status_response: -3}"
+
+  if [[ "$http_code" != "200" ]]; then
+    echo "$(date) - Error: Cannot get connector status (HTTP: $http_code)"
+    return 1
+  fi
+
+  if [[ ! -f /tmp/connector_status.json ]]; then
+    echo "$(date) - Error: Status file not found"
+    return 1
+  fi
+
+  connector_state=$(cat /tmp/connector_status.json | grep -o '"state":"[^"]*"' | head -1 | cut -d'"' -f4)
+  non_running_tasks=$(cat /tmp/connector_status.json | grep -o '"state":"[^"]*"' | grep -vc '"state":"RUNNING"')
+
+  echo "$(date) - Connector state: $connector_state, Non-running tasks: $non_running_tasks"
+
+  if [[ "$connector_state" != "RUNNING" ]] || [[ "$non_running_tasks" -gt 0 ]]; then
+    return 1
+  fi
+
+  return 0
+}
+
+# health monitoring loop
+HEALTH_CHECK_INTERVAL=${HEALTH_CHECK_INTERVAL:-20}
+
+echo "$(date) - Starting connector health monitoring (check interval: ${HEALTH_CHECK_INTERVAL}s)"
+
+# let orchestrator manage container and remove `&`
+wait "$KAFKA_CONNECT_PID" &
+
+while true; do
+  if ! ps -p $KAFKA_CONNECT_PID > /dev/null; then
+    echo "$(date) - [MONITOR] - Kafka Connect process is not running, skipping health check"
+    exit 1
+  elif check_connector_health; then
+    echo "$(date) - [MONITOR] - Connector is healthy"
+  else 
+    echo "$(date) - [MONITOR] - Connector health check failed, killing Kafka Connect process..."
+    kill $KAFKA_CONNECT_PID
+    exit 1
+  fi
+
+  sleep "$HEALTH_CHECK_INTERVAL"
+done
