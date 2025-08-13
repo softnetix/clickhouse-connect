@@ -148,25 +148,39 @@ check_connector_health() {
   return 0
 }
 
+monitor_loop() {
+  while true; do
+    if ! ps -p "$KAFKA_CONNECT_PID" > /dev/null; then
+      echo "$(date) - [MONITOR] - Kafka Connect process is not running, stopping monitor"
+      return 0
+    elif check_connector_health; then
+      echo "$(date) - [MONITOR] - Connector is healthy"
+    else
+      echo "$(date) - [MONITOR] - Connector health check failed, killing Kafka Connect process..."
+      kill "$KAFKA_CONNECT_PID" 2>/dev/null
+      return 1
+    fi
+
+    sleep "$HEALTH_CHECK_INTERVAL"
+  done
+}
+
 # health monitoring loop
 HEALTH_CHECK_INTERVAL=${HEALTH_CHECK_INTERVAL:-20}
 
 echo "$(date) - Starting connector health monitoring (check interval: ${HEALTH_CHECK_INTERVAL}s)"
 
-# let orchestrator manage container and remove `&`
-wait "$KAFKA_CONNECT_PID" &
+monitor_loop &
+MONITOR_PID=$!
 
-while true; do
-  if ! ps -p $KAFKA_CONNECT_PID > /dev/null; then
-    echo "$(date) - [MONITOR] - Kafka Connect process is not running, skipping health check"
-    exit 1
-  elif check_connector_health; then
-    echo "$(date) - [MONITOR] - Connector is healthy"
-  else 
-    echo "$(date) - [MONITOR] - Connector health check failed, killing Kafka Connect process..."
-    kill $KAFKA_CONNECT_PID
-    exit 1
-  fi
+# let orchestrator manage container
+wait "$KAFKA_CONNECT_PID"
 
-  sleep "$HEALTH_CHECK_INTERVAL"
-done
+# handler connector stop section
+CONNECT_EXIT=$?
+
+echo "$(date) - Kafka Connect exited with code $CONNECT_EXIT, stopping monitor"
+kill "$MONITOR_PID" 2>/dev/null
+wait "$MONITOR_PID" 2>/dev/null
+
+exit "$CONNECT_EXIT"
