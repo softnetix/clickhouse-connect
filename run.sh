@@ -4,30 +4,50 @@
 /etc/confluent/docker/run &
 KAFKA_CONNECT_PID=$!
 
-# Wait for Kafka Connect listener
-echo "Waiting for Kafka Connect Worker to start listening on localhost ⏳"
+# Wait for Kafka Connect listener.
+# Hard deadline so a hung/never-ready worker doesn't block the container
+# forever (as happened in prod) — bail out non-zero and let k8s/swarm restart us.
+LISTENER_WAIT_TIMEOUT=${LISTENER_WAIT_TIMEOUT:-180}
+echo "Waiting for Kafka Connect Worker to start listening on localhost ⏳ (timeout: ${LISTENER_WAIT_TIMEOUT}s)"
+listener_deadline=$((SECONDS + LISTENER_WAIT_TIMEOUT))
 while : ; do
-  curl_status=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8084/connectors)
+  # --connect-timeout/--max-time so an individual curl can never hang indefinitely
+  curl_status=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 5 --max-time 10 http://localhost:8084/connectors)
   echo -e "$(date)  Kafka Connect listener HTTP state: $curl_status (waiting for 200)"
 
   if [ "$curl_status" -eq 200 ] ; then
     break
   fi
 
+  if [ "$SECONDS" -ge "$listener_deadline" ]; then
+    echo "$(date) - Error: Kafka Connect listener did not return 200 within ${LISTENER_WAIT_TIMEOUT}s, exiting for orchestrator restart"
+    kill "$KAFKA_CONNECT_PID" 2>/dev/null
+    exit 1
+  fi
+
   sleep 5
 done
 
-# Check last created table - avoiding restarts
+# Check last created table - avoiding restarts.
+# Same hard-deadline protection so a stuck ClickHouse can't hang us forever.
+TABLE_WAIT_TIMEOUT=${TABLE_WAIT_TIMEOUT:-180}
+table_deadline=$((SECONDS + TABLE_WAIT_TIMEOUT))
 while true; do
-  response=$(curl -s -u "$CLICKHOUSE_USERNAME":"$CLICKHOUSE_PASSWORD" --data "EXISTS $CLICKHOUSE_DATABASE.$LAST_CREATED_TABLE_NAME" "http://$CLICKHOUSE_HOSTNAME:$CLICKHOUSE_PORT")
+  response=$(curl -s --connect-timeout 5 --max-time 10 -u "$CLICKHOUSE_USERNAME":"$CLICKHOUSE_PASSWORD" --data "EXISTS $CLICKHOUSE_DATABASE.$LAST_CREATED_TABLE_NAME" "http://$CLICKHOUSE_HOSTNAME:$CLICKHOUSE_PORT")
 
   if [[ "$response" == "1" ]]; then
     echo "Table $CLICKHOUSE_DATABASE.$LAST_CREATED_TABLE_NAME exists."
     break
-  else
-    echo "Waiting for table $CLICKHOUSE_DATABASE.$LAST_CREATED_TABLE_NAME to be created..."
-    sleep 2
   fi
+
+  if [ "$SECONDS" -ge "$table_deadline" ]; then
+    echo "$(date) - Error: Table $CLICKHOUSE_DATABASE.$LAST_CREATED_TABLE_NAME not present within ${TABLE_WAIT_TIMEOUT}s, exiting for orchestrator restart"
+    kill "$KAFKA_CONNECT_PID" 2>/dev/null
+    exit 1
+  fi
+
+  echo "Waiting for table $CLICKHOUSE_DATABASE.$LAST_CREATED_TABLE_NAME to be created..."
+  sleep 2
 done
 
 topics=$(echo "$TOPIC2TABLEMAP" | awk -F ',' '{for (i=1; i<=NF; i++) print $i}' | awk -F '=' '{print $1}' | tr '\n' ',' | sed 's/,$//')
@@ -89,7 +109,7 @@ create_or_update_connector() {
   echo -e "\n--\n+> Starting to configure ClickHouse Sink Connector"
 
   # Try to create/update connector
-  config_response=$(curl -s -w "%{http_code}" -X PUT -H "Content-Type:application/json" \
+  config_response=$(curl -s -w "%{http_code}" --connect-timeout 5 --max-time 60 -X PUT -H "Content-Type:application/json" \
     http://localhost:8084/connectors/${CLICKHOUSE_SINK_CONNECTOR_NAME}/config \
     -d "${CLICKHOUSE_SINK_CONNECTOR_CONFIG}" 2>/dev/null)
 
@@ -123,7 +143,7 @@ check_connector_health() {
   local connector_state
   local non_running_tasks
 
-  status_response=$(curl -s -w "%{http_code}" -o /tmp/connector_status.json http://localhost:8084/connectors/${CLICKHOUSE_SINK_CONNECTOR_NAME}/status 2>/dev/null)
+  status_response=$(curl -s -w "%{http_code}" -o /tmp/connector_status.json --connect-timeout 5 --max-time 30 http://localhost:8084/connectors/${CLICKHOUSE_SINK_CONNECTOR_NAME}/status 2>/dev/null)
   http_code="${status_response: -3}"
 
   if [[ "$http_code" != "200" ]]; then
@@ -148,25 +168,39 @@ check_connector_health() {
   return 0
 }
 
+monitor_loop() {
+  while true; do
+    if ! ps -p "$KAFKA_CONNECT_PID" > /dev/null; then
+      echo "$(date) - [MONITOR] - Kafka Connect process is not running, stopping monitor"
+      return 0
+    elif check_connector_health; then
+      echo "$(date) - [MONITOR] - Connector is healthy"
+    else
+      echo "$(date) - [MONITOR] - Connector health check failed, killing Kafka Connect process..."
+      kill "$KAFKA_CONNECT_PID" 2>/dev/null
+      return 1
+    fi
+
+    sleep "$HEALTH_CHECK_INTERVAL"
+  done
+}
+
 # health monitoring loop
 HEALTH_CHECK_INTERVAL=${HEALTH_CHECK_INTERVAL:-20}
 
 echo "$(date) - Starting connector health monitoring (check interval: ${HEALTH_CHECK_INTERVAL}s)"
 
-# let orchestrator manage container and remove `&`
-wait "$KAFKA_CONNECT_PID" &
+monitor_loop &
+MONITOR_PID=$!
 
-while true; do
-  if ! ps -p $KAFKA_CONNECT_PID > /dev/null; then
-    echo "$(date) - [MONITOR] - Kafka Connect process is not running, skipping health check"
-    exit 1
-  elif check_connector_health; then
-    echo "$(date) - [MONITOR] - Connector is healthy"
-  else 
-    echo "$(date) - [MONITOR] - Connector health check failed, killing Kafka Connect process..."
-    kill $KAFKA_CONNECT_PID
-    exit 1
-  fi
+# let orchestrator manage container
+wait "$KAFKA_CONNECT_PID"
 
-  sleep "$HEALTH_CHECK_INTERVAL"
-done
+# handler connector stop section
+CONNECT_EXIT=$?
+
+echo "$(date) - Kafka Connect exited with code $CONNECT_EXIT, stopping monitor"
+kill "$MONITOR_PID" 2>/dev/null
+wait "$MONITOR_PID" 2>/dev/null
+
+exit "$CONNECT_EXIT"
